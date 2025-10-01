@@ -108,7 +108,7 @@ function DeviceController() {
     // Define which fields are numbers vs strings
     const numberFields = ['Temperature1', 'Temperature2', 'Temperature3', 'Temperature4', 
                          'AverageTemperature', 'OxygenSensor', 'NumberOfLayers', 'LoadCell'];
-    const stringFields = ['Command', 'OptionalCommand', 'GCodeFile'];
+    const stringFields = ['Command', 'OptionalCommand', 'GCodeFile','Status', 'LEDState'];
     
     for (const [key, value] of Object.entries(data)) {
       if (value !== '' && value !== null && value !== undefined) {
@@ -327,6 +327,16 @@ function DeviceController() {
                   {latestData.Temperature1}°C
                 </div>
               </div>
+
+              <div className="bg-white/10 rounded-xl p-4 border border-white/10">
+                <div className="flex items-center gap-2 mb-3">
+                  <Thermometer className="w-5 h-5 text-red-400" />
+                  <span className="font-medium">Temperature </span>
+                </div>
+                <div className={`text-3xl font-bold ${getTemperatureColor(latestData.Temperature1)}`}>
+                  {latestData.Temperature}°C
+                </div>
+              </div>
               
               <div className="bg-white/10 rounded-xl p-4 border border-white/10">
                 <div className="flex items-center gap-2 mb-3">
@@ -384,6 +394,8 @@ function DeviceController() {
                 </div>
               </div>
               
+              
+              
               <div className="bg-white/10 rounded-xl p-4 border border-white/10">
                 <div className="flex items-center gap-2 mb-3">
                   <Layers className="w-5 h-5 text-indigo-400" />
@@ -393,6 +405,47 @@ function DeviceController() {
                   {latestData.NumberOfLayers}
                 </div>
               </div>
+              <div className="bg-white/10 rounded-xl p-4 border border-white/10">
+                <div className="flex items-center gap-2 mb-3">
+                  <Layers className="w-5 h-5 text-indigo-400" />
+                  <span className="font-medium">Humidity</span>
+                </div>
+                <div className="text-2xl font-bold text-indigo-400">
+                  {latestData.Humidity}
+                </div>
+              </div>
+
+              <div className="bg-white/10 rounded-xl p-4 border border-white/10">
+                <div className="flex items-center gap-2 mb-3">
+                  <Layers className="w-5 h-5 text-indigo-400" />
+                  <span className="font-medium">LED State</span>
+                </div>
+                <div className="text-2xl font-bold text-indigo-400">
+                  {latestData.LEDState}
+                </div>
+              </div>
+
+              <div className="bg-white/10 rounded-xl p-4 border border-white/10">
+                <div className="flex items-center gap-2 mb-3">
+                  <Layers className="w-5 h-5 text-indigo-400" />
+                  <span className="font-medium">Motor State</span>
+                </div>
+                <div className="text-2xl font-bold text-indigo-400">
+                  {latestData.MotorState}
+                </div>
+              </div>
+
+              <div className="bg-white/10 rounded-xl p-4 border border-white/10">
+                <div className="flex items-center gap-2 mb-3">
+                  <Layers className="w-5 h-5 text-indigo-400" />
+                  <span className="font-medium">Device Location</span>
+                </div>
+                <div className="text-2xl font-bold text-indigo-400">
+                  {latestData.Location}
+                </div>
+              </div>
+              
+              
               
               <div className="bg-white/10 rounded-xl p-4 border border-white/10">
                 <div className="flex items-center gap-2 mb-3">
@@ -460,6 +513,8 @@ function DeviceController() {
                 <option value="HEAT_UP" className="bg-gray-800">HEAT_UP</option>
                 <option value="COOL_DOWN" className="bg-gray-800">COOL_DOWN</option>
                 <option value="RESET" className="bg-gray-800">RESET</option>
+                <option value="SEND_GCODE" className="bg-gray-800">LED_ON</option>
+                <option value="LED_ON" className="bg-gray-800">LED_OFF</option>
               </select>
               <button 
                 onClick={sendCommand} 
@@ -491,6 +546,10 @@ function DeviceController() {
                 <option value="OxygenSensor" className="bg-gray-800">Oxygen Sensor</option>
                 <option value="NumberOfLayers" className="bg-gray-800">Number of Layers</option>
                 <option value="LoadCell" className="bg-gray-800">Load Cell</option>
+                <option value="Command" className="bg-gray-800">Command</option>
+                <option value="LEDState" className="bg-gray-800">LED Status</option>
+
+
                 <option value="OptionalCommand" className="bg-gray-800">Optional Command</option>
               </select>
               <input
