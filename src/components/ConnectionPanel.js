@@ -58,11 +58,9 @@ const ConnectionPanel = ({
     <div className="connection-panel">
       <div className="connection-content">
         <div className="connection-left">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <rect x="2" y="7" width="20" height="14" rx="2" ry="2" strokeWidth="2"/>
-            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" strokeWidth="2"/>
-          </svg>
-          <h3>Device Connection</h3>
+   
+          <img src="./logo.png" className="logo"/>
+          <h3>OpenArch Software v0.1</h3>
         </div>
 
         <div className="connection-controls">
