@@ -54,7 +54,7 @@ const ControlPanel = ({ deviceId, isConnected, BACKEND_URL }) => {
       });
       
       console.log("Command sent:", command);
-      setLastCommand(command); // update last sent command
+      // setLastCommand(command); // update last sent command
 
       showNotification(`Command '${command}' sent successfully!`, 'success');
       setTimeout(() => {
@@ -108,11 +108,11 @@ const ControlPanel = ({ deviceId, isConnected, BACKEND_URL }) => {
         )}
       </div>
 
-      { isConnected && lastCommand && (
+      {/* { isConnected && lastCommand && (
   <div className="last-command">
     <strong>Last Sent Command:</strong> <span>{lastCommand}</span>
   </div>
-)}
+)} */}
 
 
       <div className="control-content">
