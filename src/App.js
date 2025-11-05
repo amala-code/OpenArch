@@ -66,6 +66,17 @@ function App() {
     reader.readAsText(file);
   };
 
+  const resetAllStates = () => {
+  setDeviceId("");
+  setIsConnected(false);
+  setSensorData(null);
+  setAutoRefresh(false);
+  setGcode("");
+  setFileName("");
+  setIsLoading(false);
+};
+
+
   return (
     <div className="App">
       {/* Connection Panel - Top */}
@@ -78,6 +89,8 @@ function App() {
         autoRefresh={autoRefresh}
         setAutoRefresh={setAutoRefresh}
         BACKEND_URL={BACKEND_URL}
+        resetAllStates={resetAllStates}  // ✅ add this line
+
       />
 
       {/* Main Dashboard Layout */}

@@ -410,3 +410,18 @@
       width: 100%;
     }
   }
+
+  .last-command {
+  margin: 8px 0;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-left: 4px solid #007bff;
+  font-size: 0.95rem;
+  color: #333;
+  border-radius: 6px;
+}
+.last-command span {
+  color: #007bff;
+  font-weight: 600;
+  margin-left: 4px;
+}

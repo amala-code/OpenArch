@@ -36,6 +36,27 @@ const SensorPanel = ({ sensorData, isConnected }) => {
 
   return (
     <div className="sensor-panel">
+  <div className="command-status-box">
+        <div className="command-status-content">
+          <div className="command-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" strokeWidth="2"/>
+              <line x1="9" y1="10" x2="15" y2="10" strokeWidth="2"/>
+              <line x1="12" y1="7" x2="12" y2="13" strokeWidth="2"/>
+            </svg>
+          </div>
+          <div className="command-text">
+            <span className="command-label">Command Received from Hardware</span>
+            <span className="command-value">  {isConnected && sensorData && Object.keys(sensorData).length > 0
+    ? sensorData.UnknownCommand || 'No UnknownCommand found'
+    : 'No Message received'}</span>
+          </div>
+          <div className="command-indicator">
+            <div className="pulse-dot"></div>
+          </div>
+        </div>
+      </div>
+
       <div className="panel-header">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" strokeWidth="2"/>

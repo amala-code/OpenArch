@@ -15,6 +15,8 @@ const ControlPanel = ({ deviceId, isConnected, BACKEND_URL }) => {
   });
 
   const [sendingCommand, setSendingCommand] = useState(false);
+  const [lastCommand, setLastCommand] = useState(null);
+
 
   // Convert to DynamoDB format
   const convertToDynamoFormat = (data) => {
@@ -52,7 +54,17 @@ const ControlPanel = ({ deviceId, isConnected, BACKEND_URL }) => {
       });
       
       console.log("Command sent:", command);
+      setLastCommand(command); // update last sent command
+
       showNotification(`Command '${command}' sent successfully!`, 'success');
+      setTimeout(() => {
+        fetch(`${BACKEND_URL}/device/${deviceId}/command?command=`, {
+          method: "POST",
+        })
+          .then(() => console.log("Empty command sent to clear backend"))
+          .catch((err) => console.error("Error clearing command:", err));
+      }, 2000);
+
     } catch (error) {
       console.error("Error sending command:", error);
       showNotification("Failed to send command", 'error');
@@ -95,6 +107,13 @@ const ControlPanel = ({ deviceId, isConnected, BACKEND_URL }) => {
           <span className="warning-badge">Not Connected</span>
         )}
       </div>
+
+      { isConnected && lastCommand && (
+  <div className="last-command">
+    <strong>Last Sent Command:</strong> <span>{lastCommand}</span>
+  </div>
+)}
+
 
       <div className="control-content">
         {!isConnected ? (

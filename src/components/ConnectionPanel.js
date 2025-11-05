@@ -9,7 +9,8 @@ const ConnectionPanel = ({
   setSensorData,
   autoRefresh,
   setAutoRefresh,
-  BACKEND_URL 
+  BACKEND_URL,
+  resetAllStates
 }) => {
 
   // Fetch device data
@@ -37,7 +38,7 @@ const ConnectionPanel = ({
   // Auto-refresh data
   useEffect(() => {
     if (autoRefresh && deviceId && isConnected) {
-      const interval = setInterval(fetchDeviceData, 5000);
+      const interval = setInterval(fetchDeviceData, 1500);
       return () => clearInterval(interval);
     }
   }, [autoRefresh, deviceId, isConnected]);
@@ -48,11 +49,19 @@ const ConnectionPanel = ({
     }
   };
 
+  // const handleDisconnect = () => {
+  //   setIsConnected(false);
+  //   setAutoRefresh(false);
+    
+  //   setSensorData(null);
+  // };
+
   const handleDisconnect = () => {
-    setIsConnected(false);
-    setAutoRefresh(false);
-    setSensorData(null);
-  };
+  clearInterval(window.deviceRefreshInterval);
+  if (typeof resetAllStates === "function") {
+    resetAllStates();  // ✅ resets all App-level states
+  }
+};
 
   return (
     <div className="connection-panel">
