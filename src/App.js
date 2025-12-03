@@ -1,3 +1,6 @@
+
+
+
 import React, { useState } from "react";
 import "./App.css";
 import SensorPanel from "./components/SensorPanel";
@@ -67,15 +70,14 @@ function App() {
   };
 
   const resetAllStates = () => {
-  setDeviceId("");
-  setIsConnected(false);
-  setSensorData(null);
-  setAutoRefresh(false);
-  setGcode("");
-  setFileName("");
-  setIsLoading(false);
-};
-
+    setDeviceId("");
+    setIsConnected(false);
+    setSensorData(null);
+    setAutoRefresh(false);
+    setGcode("");
+    setFileName("");
+    setIsLoading(false);
+  };
 
   return (
     <div className="App">
@@ -89,30 +91,24 @@ function App() {
         autoRefresh={autoRefresh}
         setAutoRefresh={setAutoRefresh}
         BACKEND_URL={BACKEND_URL}
-        resetAllStates={resetAllStates}  // ✅ add this line
-
+        resetAllStates={resetAllStates}
       />
 
-      {/* Main Dashboard Layout */}
+      {/* Main Dashboard Layout - Horizontal 25-50-25 */}
       <div className="dashboard-container">
-        {/* Left Panel - 30% */}
-        <div className="left-panel">
-          {/* Sensor Panel */}
+        {/* Left Panel - Sensor Panel (25%) */}
+        <div className="panel-25">
           <SensorPanel 
             sensorData={sensorData}
             isConnected={isConnected}
-          />
-          
-          {/* Control Panel */}
-          <ControlPanel 
             deviceId={deviceId}
-            isConnected={isConnected}
             BACKEND_URL={BACKEND_URL}
           />
         </div>
 
-        {/* Right Panel - 70% */}
-        <div className="right-panel">
+        {/* Center Panel - G-Code Viewer + Command Status (50%) */}
+        <div className="panel-50">
+          {/* G-Code Viewer Section */}
           <div className="gcode-section">
             <div className="gcode-header">
               <h2>G-Code 3D Visualizer</h2>
@@ -158,7 +154,7 @@ function App() {
             )}
 
             {/* G-code viewer */}
-            <div className="viewer-container">
+            <div className="viewer-container compact">
               {!gcode ? (
                 <div className="empty-viewer">
                   <svg width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -184,6 +180,39 @@ function App() {
               )}
             </div>
           </div>
+
+          {/* Command Status Box - Below G-Code Viewer */}
+          <div className="command-status-box">
+            <div className="command-status-content">
+              <div className="command-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" strokeWidth="2"/>
+                  <line x1="9" y1="10" x2="15" y2="10" strokeWidth="2"/>
+                  <line x1="12" y1="7" x2="12" y2="13" strokeWidth="2"/>
+                </svg>
+              </div>
+              <div className="command-text">
+                <span className="command-label">Command Received from Hardware</span>
+                <span className="command-value">
+                  {isConnected && sensorData && Object.keys(sensorData).length > 0
+                    ? sensorData.UnknownCommand || 'No UnknownCommand found'
+                    : 'No Message received'}
+                </span>
+              </div>
+              <div className="command-indicator">
+                <div className="pulse-dot"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Panel - Control Panel (25%) */}
+        <div className="panel-25">
+          <ControlPanel 
+            deviceId={deviceId}
+            isConnected={isConnected}
+            BACKEND_URL={BACKEND_URL}
+          />
         </div>
       </div>
     </div>

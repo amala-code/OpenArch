@@ -1,275 +1,507 @@
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-  }
-  
-  body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background-color: #0a0a0a;
-    color: #e0e0e0;
-    overflow-x: hidden;
-  }
-  
-  .App {
-    min-height: 100vh;
-    background-color: #0a0a0a;
-  }
-  
+/* Main dashboard container - horizontal layout */
+.dashboard-container {
+  display: flex;
+  flex-direction: row;
+  gap: 7px;
+  padding: 20px;
+    height: calc(102.9vh - 100px);
+      overflow: hidden;
+      background-color: black;
+}
+
+/* Left panel - Sensor Panel (25%) */
+.panel-25 {
+  flex: 0 0 25%;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+}
+
+/* Center panel - G-Code Viewer (50%) */
+.panel-50 {
+  flex: 0 0 50%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* G-Code section styling */
+.gcode-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #1a1a1a;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.gcode-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  /* padding-bottom: 15px; */
+  /* border-bottom: 1px solid #333; */
+}
+
+.gcode-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: #fff;
+}
+
+.file-upload-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.file-upload-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.file-upload-label:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.file-input {
+  display: none;
+}
+
+.file-name {
+  color: #4ECDC4;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.loading-text {
+  color: #FFA07A;
+  font-size: 0.9rem;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Viewer instructions */
+.viewer-instructions {
+  background: #252525;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+}
+
+.instructions-row {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  gap: 20px;
+}
+
+.instruction-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ccc;
+  font-size: 0.85rem;
+}
+
+.instruction-item .icon {
+  font-size: 1.2rem;
+}
+
+/* Viewer container */
+.viewer-container {
+  flex: 1;
+  background: #0a0a0a;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+  min-height: 0;
+}
+
+.empty-viewer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #666;
+  text-align: center;
+}
+
+.empty-viewer svg {
+  margin-bottom: 20px;
+  opacity: 0.5;
+}
+
+.empty-viewer p {
+  margin: 5px 0;
+  font-size: 1.1rem;
+}
+
+.supported-formats {
+  font-size: 0.9rem !important;
+  color: #888;
+}
+
+/* Responsive design for smaller screens */
+@media (max-width: 1200px) {
   .dashboard-container {
-    display: flex;
-    min-height: calc(100vh - 80px);
-    gap: 20px;
-    padding: 20px;
-  }
-  
-  /* Left Panel - 30% */
-  .left-panel {
-    flex: 0 0 30%;
-    display: flex;
     flex-direction: column;
-    gap: 0;
-    max-width: 500px;
-    min-width: 350px;
+    height: auto;
   }
   
-  /* Right Panel - 70% */
-  .right-panel {
-    flex: 1;
-    min-width: 0;
-  }
-  
-  .gcode-section {
-    background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
-    border-radius: 12px;
-    padding: 25px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-    border: 1px solid #333;
-    height: calc(100vh - 120px);
-    display: flex;
-    flex-direction: column;
-  }
-  
-  .gcode-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 15px;
-    flex-wrap: wrap;
-    gap: 15px;
-  }
-  
-  .gcode-header h2 {
-    color: #FF8C42;
-    font-size: 24px;
-    font-weight: 600;
-    margin: 0;
-  }
-  
-  .file-upload-container {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-  
-  .file-upload-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 20px;
-    background: linear-gradient(135deg, #FF8C42 0%, #FF6B35 100%);
-    color: white;
-    border-radius: 8px;
-    cursor: pointer;
-    font-weight: 500;
-    transition: all 0.3s ease;
-    border: none;
-  }
-  
-  .file-upload-label:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(255, 140, 66, 0.4);
-  }
-  
-  .file-input {
-    display: none;
-  }
-  
-  .file-name {
-    color: #FF8C42;
-    font-size: 14px;
-    font-weight: 500;
-    max-width: 200px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  
-  .loading-text {
-    color: #FF8C42;
-    font-size: 14px;
-    animation: pulse 1.5s ease-in-out infinite;
-  }
-  
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-  }
-  
-  .viewer-instructions {
-    background-color: #1a1a1a;
-    border-radius: 8px;
-    padding: 12px 15px;
-    margin-bottom: 15px;
-    border: 1px solid #333;
-  }
-  
-  .instructions-row {
-    display: flex;
-    gap: 20px;
-    justify-content: space-around;
-    flex-wrap: wrap;
-  }
-  
-  .instruction-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: #b0b0b0;
-    font-size: 13px;
-  }
-  
-  .instruction-item .icon {
-    font-size: 16px;
-  }
-  
-  .instruction-item strong {
-    color: #FF8C42;
+  .panel-25,
+  .panel-50 {
+    flex: 1 1 auto;
+    width: 100%;
   }
   
   .viewer-container {
-    flex: 1;
-    background-color: #0a0a0a;
-    border-radius: 8px;
-    overflow: hidden;
-    border: 2px solid #333;
-    position: relative;
-    min-height: 400px;
+    min-height: 500px;
   }
-  .supported-formats {
-    font-size: 14px;
-    color: #888;
-    margin-top: 10px;
+}
+
+/* Scrollbar styling for panels */
+.panel-25::-webkit-scrollbar {
+  width: 8px;
+}
+
+.panel-25::-webkit-scrollbar-track {
+  background: #1a1a1a;
+  border-radius: 4px;
+}
+
+.panel-25::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 4px;
+}
+
+.panel-25::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+
+/* App.css */
+
+.App {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+  color: #e0e0e0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* Dashboard Container - Horizontal Layout */
+.dashboard-container {
+  display: flex;
+  gap: 7px;
+  padding: 12px;
+  max-width: 1800px;
+  margin: 0 auto;
+}
+
+/* Panel Widths */
+.panel-25 {
+  flex: 0 0 25%;
+  min-width: 300px;
+}
+
+.panel-50 {
+  flex: 0 0 50%;
+  min-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+/* G-Code Section - Compact */
+.gcode-section {
+  background: rgba(20, 20, 20, 0.6);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 20px;
+  backdrop-filter: blur(10px);
+  height: 85%;
+}
+
+.gcode-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.gcode-header h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
+  background: linear-gradient(135deg, #4ECDC4 0%, #45B7D1 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* File Upload Styling */
+.file-upload-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.file-upload-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #4ECDC4 0%, #45B7D1 100%);
+  color: white;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  font-size: 0.9rem;
+}
+
+.file-upload-label:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(78, 205, 196, 0.3);
+}
+
+.file-input {
+  display: none;
+}
+
+.file-name {
+  font-size: 0.85rem;
+  color: #4ECDC4;
+  font-weight: 500;
+}
+
+.loading-text {
+  font-size: 0.85rem;
+  color: #FFD93D;
+  font-weight: 500;
+}
+
+/* Viewer Instructions */
+.viewer-instructions {
+  margin-bottom: 12px;
+  padding: 1px;
+  background: rgba(78, 205, 196, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(78, 205, 196, 0.2);
+}
+
+.instructions-row {
+  display: flex;
+  justify-content: space-around;
+  gap: 15px;
+}
+
+.instruction-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: #b0b0b0;
+}
+
+.instruction-item .icon {
+  font-size: 1.2rem;
+}
+
+.instruction-item strong {
+  color: #4ECDC4;
+  font-weight: 600;
+}
+
+/* Viewer Container - COMPACT */
+.viewer-container {
+  background: #0a0a0a;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid rgba(78, 205, 196, 0.2);
+  height: 400px; /* Reduced from larger height */
+}
+
+.viewer-container.compact {
+  height: 350px; /* Even more compact */
+}
+
+/* Empty Viewer State */
+.empty-viewer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #666;
+}
+
+.empty-viewer svg {
+  margin-bottom: 15px;
+  opacity: 0.5;
+}
+
+.empty-viewer p {
+  margin: 5px 0;
+  font-size: 1rem;
+}
+
+.supported-formats {
+  font-size: 0.85rem;
+  color: #888;
+}
+
+/* Command Status Box - Below G-Code Viewer */
+.command-status-box {
+  background: rgba(20, 20, 20, 0.6);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 16px 20px;
+  backdrop-filter: blur(10px);
+}
+
+.command-status-content {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.command-icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, #4ECDC4 0%, #45B7D1 100%);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.command-icon svg {
+  stroke: white;
+  stroke-width: 2;
+}
+
+.command-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.command-label {
+  font-size: 0.75rem;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.command-value {
+  font-size: 1rem;
+  color: #e0e0e0;
+  font-weight: 500;
+  font-family: 'Courier New', monospace;
+}
+
+.command-indicator {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pulse-dot {
+  width: 12px;
+  height: 12px;
+  background: #4ECDC4;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
   }
-  
-  .empty-viewer {
-    display: flex;
+  50% {
+    opacity: 0.5;
+    transform: scale(1.2);
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 1400px) {
+  .dashboard-container {
     flex-direction: column;
-    align-items: center;
+  }
+
+  .panel-25,
+  .panel-50 {
+    flex: 1 1 100%;
+    min-width: 100%;
+  }
+
+  .viewer-container.compact {
+    height: 400px;
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-container {
+    padding: 10px;
+    gap: 15px;
+  }
+
+  .gcode-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .file-upload-container {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .file-upload-label {
+    width: 100%;
     justify-content: center;
-    height: 100%;
-    color: #666;
   }
-  
-  .empty-viewer svg {
-    stroke: #444;
-    margin-bottom: 20px;
+
+  .instructions-row {
+    flex-direction: column;
+    gap: 8px;
   }
-  
-  .empty-viewer p {
-    font-size: 16px;
-    color: #666;
+
+  .viewer-container.compact {
+    height: 300px;
   }
-  
-  /* Responsive Design */
-  @media (max-width: 1400px) {
-    .left-panel {
-      flex: 0 0 35%;
-      min-width: 320px;
-    }
+
+  .command-status-content {
+    flex-direction: column;
+    text-align: center;
   }
-  
-  @media (max-width: 1200px) {
-    .left-panel {
-      flex: 0 0 40%;
-    }
+
+  .command-text {
+    align-items: center;
   }
-  
-  @media (max-width: 968px) {
-    .dashboard-container {
-      flex-direction: column;
-      padding: 15px;
-      gap: 15px;
-    }
-  
-    .left-panel {
-      flex: 1;
-      max-width: 100%;
-      min-width: 0;
-    }
-  
-    .right-panel {
-      flex: 1;
-    }
-  
-    .gcode-section {
-      height: 600px;
-    }
-  
-    .gcode-header {
-      flex-direction: column;
-      align-items: flex-start;
-    }
-  }
-  
-  @media (max-width: 640px) {
-    .dashboard-container {
-      padding: 10px;
-    }
-  
-    .gcode-section {
-      padding: 15px;
-      height: 500px;
-    }
-  
-    .gcode-header h2 {
-      font-size: 20px;
-    }
-  
-    .instructions-row {
-      flex-direction: column;
-      gap: 8px;
-    }
-  
-    .file-upload-label {
-      padding: 8px 16px;
-      font-size: 14px;
-      width: 100%;
-      justify-content: center;
-    }
-  
-    .file-name {
-      max-width: 100%;
-    }
-  }
-  
-  /* Custom Scrollbar */
-  ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
-  
-  ::-webkit-scrollbar-track {
-    background: #1a1a1a;
-    border-radius: 4px;
-  }
-  
-  ::-webkit-scrollbar-thumb {
-    background: #FF8C42;
-    border-radius: 4px;
-  }
-  
-  ::-webkit-scrollbar-thumb:hover {
-    background: #ff7a2e;
-  }
+}
