@@ -1,46 +1,62 @@
-import React, { useState } from "react";
+
+
+
+import React, { useState, useRef, useCallback } from "react";
 import "./ControlPanel.css";
 
-const ControlPanel = ({ deviceId, isConnected, BACKEND_URL }) => {
+// ✅ FIX 5: Right-click tooltip to show previous sent value per input field
+const CommandTooltip = ({ history, visible, x, y, onClose }) => {
+  if (!visible || history.length === 0) return null;
+
+  return (
+    <div
+      onMouseLeave={onClose}
+      style={{
+        position: 'fixed',
+        top: y,
+        left: x,
+        zIndex: 9999,
+        backgroundColor: '#1a2332',
+        border: '1px solid rgba(139,180,204,0.3)',
+        borderRadius: '8px',
+        padding: '10px',
+        minWidth: '180px',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+        backdropFilter: 'blur(10px)',
+      }}
+    >
+      <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', marginBottom: '6px', letterSpacing: '0.05em' }}>
+        COMMAND HISTORY
+      </div>
+      {history.slice().reverse().map((entry, i) => (
+        <div key={i} style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '4px 0', borderBottom: i < history.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none'
+        }}>
+          <span style={{ fontFamily: 'monospace', color: i === 0 ? '#8BB4CC' : 'rgba(255,255,255,0.55)', fontSize: '13px' }}>
+            {entry.command}
+          </span>
+          <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', marginLeft: '12px' }}>
+            {entry.time}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const ControlPanel = ({ deviceId, isConnected, BACKEND_URL, onAbort }) => {
   const [inputValues, setInputValues] = useState({
-    spreaderSpeed: "",
-    collectionDelay: "",
-    buildLayer: "",
-    tempSetpoint: "",
-    spreaderPos: "",
-    buildPlate: "",
-    buildPlateMicron: "",
-    opticsMotor: "",
-    resumeLayer: ""
+    spreaderSpeed: "", collectionDelay: "", buildLayer: "",
+    tempSetpoint: "", spreaderPos: "", buildPlate: "",
+    buildPlateMicron: "", opticsMotor: "", resumeLayer: ""
   });
 
   const [sendingCommand, setSendingCommand] = useState(false);
-  const [lastCommand, setLastCommand] = useState(null);
+  // ✅ FIX 5: Per-field command history (last 5 per field)
+  const [commandHistory, setCommandHistory] = useState({});
+  const [tooltip, setTooltip] = useState({ visible: false, x: 0, y: 0, fieldKey: null });
 
-
-  // Convert to DynamoDB format
-  const convertToDynamoFormat = (data) => {
-    const converted = {};
-    converted.deviceId = { S: deviceId };
-    converted.timestamp = { N: Date.now().toString() };
-    
-    const numberFields = ['Temperature1', 'Temperature2', 'Temperature3', 'Temperature4', 
-                         'AverageTemperature', 'OxygenSensor', 'NumberOfLayers', 'LoadCell'];
-    const stringFields = ['Command', 'OptionalCommand', 'GCodeFile', 'Status', 'LEDState'];
-    
-    for (const [key, value] of Object.entries(data)) {
-      if (value !== '' && value !== null && value !== undefined) {
-        if (numberFields.includes(key)) {
-          converted[key] = { N: value.toString() };
-        } else if (stringFields.includes(key)) {
-          converted[key] = { S: value.toString() };
-        }
-      }
-    }
-    return converted;
-  };
-
-  // Send command via API
   const sendCommand = async (command) => {
     if (!isConnected || !deviceId) {
       alert("Please connect to a device first!");
@@ -49,71 +65,82 @@ const ControlPanel = ({ deviceId, isConnected, BACKEND_URL }) => {
 
     setSendingCommand(true);
     try {
-      await fetch(`${BACKEND_URL}/device/${deviceId}/command?command=${command}`, {
-        method: "POST",
-      });
-      
+      await fetch(`${BACKEND_URL}/device/${deviceId}/command?command=${command}`, { method: "POST" });
       console.log("Command sent:", command);
-      // setLastCommand(command); // update last sent command
-
-      showNotification(`Command '${command}' sent successfully!`, 'success');
       setTimeout(() => {
-        fetch(`${BACKEND_URL}/device/${deviceId}/command?command=`, {
-          method: "POST",
-        })
-          .then(() => console.log("Empty command sent to clear backend"))
+        fetch(`${BACKEND_URL}/device/${deviceId}/command?command=`, { method: "POST" })
           .catch((err) => console.error("Error clearing command:", err));
       }, 2000);
-
     } catch (error) {
       console.error("Error sending command:", error);
-      showNotification("Failed to send command", 'error');
     } finally {
       setSendingCommand(false);
     }
   };
 
-  // Send value command (with prefix)
-  const sendValueCommand = async (prefix, value) => {
-    if (!value) {
-      alert("Please enter a value!");
-      return;
-    }
-    await sendCommand(`${prefix}${value}`);
+  // ✅ FIX 5: Track history per field key
+  const sendValueCommand = async (prefix, value, fieldKey) => {
+    if (!value) { alert("Please enter a value!"); return; }
+    const command = `${prefix}${value}`;
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    setCommandHistory(prev => {
+      const prevList = prev[fieldKey] || [];
+      const updated = [{ command, time: timeStr }, ...prevList].slice(0, 5);
+      return { ...prev, [fieldKey]: updated };
+    });
+
+    await sendCommand(command);
   };
 
   const handleInputChange = (field, value) => {
     setInputValues(prev => ({ ...prev, [field]: value }));
   };
 
-  const showNotification = (message, type) => {
-    if (type === 'success') {
-      console.log('✓', message);
-    } else {
-      console.error('✗', message);
-    }
-  };
+  // Show tooltip on right-click of send button
+  const handleRightClick = useCallback((e, fieldKey) => {
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    setTooltip({
+      visible: true,
+      x: rect.left - 190,
+      y: rect.top,
+      fieldKey
+    });
+  }, []);
+
+  const closeTooltip = useCallback(() => {
+    setTooltip(prev => ({ ...prev, visible: false }));
+  }, []);
+
+  const activeHistory = tooltip.fieldKey ? (commandHistory[tooltip.fieldKey] || []) : [];
+
+  // Reusable send button with right-click for history
+  const SendBtn = ({ prefix, field }) => (
+    <button
+      className="send-btn"
+      onClick={() => sendValueCommand(prefix, inputValues[field], field)}
+      onContextMenu={(e) => handleRightClick(e, field)}
+      disabled={sendingCommand}
+      title="Click to send | Right-click to view history"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <line x1="5" y1="12" x2="19" y2="12" strokeWidth="2"/>
+        <polyline points="12 5 19 12 12 19" strokeWidth="2"/>
+      </svg>
+    </button>
+  );
 
   return (
     <div className="control-panel">
-      {/* <div className="panel-header sticky">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" strokeWidth="2"/>
-          <line x1="9" y1="9" x2="15" y2="9" strokeWidth="2"/>
-          <line x1="9" y1="15" x2="15" y2="15" strokeWidth="2"/>
-        </svg>
-        <h3>Control Panel</h3>
-        {!isConnected && (
-          <span className="warning-badge">Not Connected</span>
-        )}
-      </div> */}
-
-      {/* { isConnected && lastCommand && (
-  <div className="last-command">
-    <strong>Last Sent Command:</strong> <span>{lastCommand}</span>
-  </div>
-)} */}
-
+      <CommandTooltip
+        history={activeHistory}
+        visible={tooltip.visible}
+        x={tooltip.x}
+        y={tooltip.y}
+        onClose={closeTooltip}
+      />
 
       <div className="control-content">
         {!isConnected ? (
@@ -157,7 +184,16 @@ const ControlPanel = ({ deviceId, isConnected, BACKEND_URL }) => {
                   </svg>
                   Final Run
                 </button>
-                <button className="control-btn danger" onClick={() => sendCommand('O')} disabled={sendingCommand}>
+
+                {/* ✅ FIX 2: Abort sends command AND clears gcode viewer */}
+                <button
+                  className="control-btn danger"
+                  onClick={async () => {
+                    await sendCommand('O');
+                    if (typeof onAbort === 'function') onAbort();
+                  }}
+                  disabled={sendingCommand}
+                >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                     <circle cx="12" cy="12" r="10" strokeWidth="2"/>
                     <line x1="15" y1="9" x2="9" y2="15" strokeWidth="2"/>
@@ -165,6 +201,7 @@ const ControlPanel = ({ deviceId, isConnected, BACKEND_URL }) => {
                   </svg>
                   Abort
                 </button>
+
                 <button className="control-btn warning" onClick={() => sendCommand('P')} disabled={sendingCommand}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                     <rect x="6" y="4" width="4" height="16" strokeWidth="2"/>
@@ -332,26 +369,19 @@ const ControlPanel = ({ deviceId, isConnected, BACKEND_URL }) => {
               </h4>
               <div className="button-grid">
                 <button className="control-btn test" onClick={() => sendCommand('U')} disabled={sendingCommand}>
-                  <span>U</span>
-                  Collection
+                  <span>U</span>Collection
                 </button>
                 <button className="control-btn test" onClick={() => sendCommand('V')} disabled={sendingCommand}>
-                  <span>V</span>
-                  Layer
+                  <span>V</span>Layer
                 </button>
                 <button className="control-btn test" onClick={() => sendCommand('W')} disabled={sendingCommand}>
-                  <span>W</span>
-                  SCL
+                  <span>W</span>SCL
                 </button>
                 <button className="control-btn test" onClick={() => sendCommand('X')} disabled={sendingCommand}>
-                  <span>X</span>
-                  Laser
+                  <span>X</span>Laser
                 </button>
               </div>
             </div>
-
-            {/* Parameter Inputs - Responsive */}
-        
           </>
         )}
       </div>
