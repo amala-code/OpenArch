@@ -27,7 +27,7 @@ const ConnectionPanel = ({
       setSensorData(deviceData || null);
       setIsConnected(true);
   
-      if (!autoRefresh) setAutoRefresh(true);
+      // if (!autoRefresh) setAutoRefresh(true);
     } catch (error) {
       console.error("Error fetching data:", error);
       setIsConnected(false);
