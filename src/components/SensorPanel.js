@@ -1,21 +1,101 @@
 import React from "react";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import "./SensorPanel.css";
+
+// ✅ FIX 5: Shared right-click tooltip component
+const CommandTooltip = ({ history, visible, x, y, onClose }) => {
+  if (!visible || history.length === 0) return null;
+
+  return (
+    <div
+      onMouseLeave={onClose}
+      style={{
+        position: 'fixed',
+        top: y,
+        left: x,
+        zIndex: 9999,
+        backgroundColor: '#1a2332',
+        border: '1px solid rgba(139,180,204,0.3)',
+        borderRadius: '8px',
+        padding: '10px',
+        minWidth: '180px',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+        backdropFilter: 'blur(10px)',
+      }}
+    >
+      <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', marginBottom: '6px', letterSpacing: '0.05em' }}>
+        COMMAND HISTORY
+      </div>
+      {history.slice().map((entry, i) => (
+        <div key={i} style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '4px 0', borderBottom: i < history.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none'
+        }}>
+          <span style={{ fontFamily: 'monospace', color: i === 0 ? '#8BB4CC' : 'rgba(255,255,255,0.55)', fontSize: '13px' }}>
+            {entry.command}
+          </span>
+          <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', marginLeft: '12px' }}>
+            {entry.time}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// Defined outside SensorPanel so it is never re-created on re-render (fixes single-char input bug)
+const InputGroup = ({ label, prefix, field, inputValues, lastSentValues, handleInputChange, sendValueCommand, handleRightClick, sendingCommand }) => {
+  const sendValue = () => sendValueCommand(prefix, inputValues[field], field);
+  return (
+    <div className="input-group">
+      <label>{label}</label>
+      <div className="input-with-button">
+        <input
+          type="text"
+          placeholder={lastSentValues[field] !== undefined ? String(lastSentValues[field]) : '—'}
+          value={inputValues[field]}
+          onChange={(e) => handleInputChange(field, e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && sendValue()}
+        />
+        <button
+          className="send-btn"
+          onClick={sendValue}
+          onContextMenu={(e) => { e.preventDefault(); handleRightClick(e, field); }}
+          disabled={sendingCommand}
+          title="Click to send | Right-click to view history"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <line x1="5" y1="12" x2="19" y2="12" strokeWidth="2"/>
+            <polyline points="12 5 19 12 12 19" strokeWidth="2"/>
+          </svg>
+        </button>
+      </div>
+      <div style={{
+        fontSize: '10px',
+        marginTop: '3px',
+        paddingLeft: '2px',
+        fontFamily: 'monospace',
+        color: lastSentValues[field] !== undefined ? 'rgba(139,180,204,0.75)' : 'rgba(255,255,255,0.2)'
+      }}>
+        {lastSentValues[field] !== undefined ? `prev: ${lastSentValues[field]}` : 'not sent yet'}
+      </div>
+    </div>
+  );
+};
 
 const SensorPanel = ({ sensorData, isConnected, deviceId, BACKEND_URL }) => {
   const [sendingCommand, setSendingCommand] = useState(false);
-  const [lastCommand, setLastCommand] = useState(null);
   const [inputValues, setInputValues] = useState({
-    spreaderSpeed: "",
-    collectionDelay: "",
-    buildLayer: "",
-    tempSetpoint: "",
-    spreaderPos: "",
-    buildPlate: "",
-    buildPlateMicron: "",
-    opticsMotor: "",
-    resumeLayer: ""
+    spreaderSpeed: "", collectionDelay: "", buildLayer: "",
+    tempSetpoint: "", spreaderPos: "", buildPlate: "",
+    buildPlateMicron: "", opticsMotor: "", resumeLayer: ""
   });
+
+  // ✅ FIX 5: Command history per field
+  const [commandHistory, setCommandHistory] = useState({});
+  // Last successfully sent value per field
+  const [lastSentValues, setLastSentValues] = useState({});
+  const [tooltip, setTooltip] = useState({ visible: false, x: 0, y: 0, fieldKey: null });
 
   const getStatusColor = (value, type) => {
     if (type === 'temp') {
@@ -39,53 +119,79 @@ const SensorPanel = ({ sensorData, isConnected, deviceId, BACKEND_URL }) => {
 
     setSendingCommand(true);
     try {
-      await fetch(`${BACKEND_URL}/device/${deviceId}/command?command=${command}`, {
-        method: "POST",
-      });
-      
+      await fetch(`${BACKEND_URL}/device/${deviceId}/command?command=${command}`, { method: "POST" });
       console.log("Command sent:", command);
-      // setLastCommand(command); // update last sent command
-
-      showNotification(`Command '${command}' sent successfully!`, 'success');
       setTimeout(() => {
-        fetch(`${BACKEND_URL}/device/${deviceId}/command?command=`, {
-          method: "POST",
-        })
-          .then(() => console.log("Empty command sent to clear backend"))
+        fetch(`${BACKEND_URL}/device/${deviceId}/command?command=`, { method: "POST" })
           .catch((err) => console.error("Error clearing command:", err));
       }, 2000);
-
     } catch (error) {
       console.error("Error sending command:", error);
-      showNotification("Failed to send command", 'error');
     } finally {
       setSendingCommand(false);
     }
   };
 
-  // Send value command (with prefix)
-  const sendValueCommand = async (prefix, value) => {
-    if (!value) {
-      alert("Please enter a value!");
-      return;
-    }
-    await sendCommand(`${prefix}${value}`);
+  // ✅ FIX 5: Track per-field history
+  const sendValueCommand = async (prefix, value, fieldKey) => {
+    if (!value) { alert("Please enter a value!"); return; }
+    const command = `${prefix}${value}`;
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    setCommandHistory(prev => {
+      const prevList = prev[fieldKey] || [];
+      const updated = [{ command, time: timeStr }, ...prevList].slice(0, 5);
+      return { ...prev, [fieldKey]: updated };
+    });
+
+    await sendCommand(command);
+    setLastSentValues(prev => ({ ...prev, [fieldKey]: value }));
   };
 
   const handleInputChange = (field, value) => {
     setInputValues(prev => ({ ...prev, [field]: value }));
   };
 
-  const showNotification = (message, type) => {
-    if (type === 'success') {
-      console.log('✓', message);
-    } else {
-      console.error('✗', message);
-    }
-  };
+  const handleRightClick = useCallback((e, fieldKey) => {
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    setTooltip({ visible: true, x: rect.right + 8, y: rect.top, fieldKey });
+  }, []);
+
+  const closeTooltip = useCallback(() => {
+    setTooltip(prev => ({ ...prev, visible: false }));
+  }, []);
+
+  const activeHistory = tooltip.fieldKey ? (commandHistory[tooltip.fieldKey] || []) : [];
+
+  const SendBtn = ({ prefix, field }) => (
+    <button
+      className="send-btn"
+      onClick={() => sendValueCommand(prefix, inputValues[field], field)}
+      onContextMenu={(e) => handleRightClick(e, field)}
+      disabled={sendingCommand}
+      title="Click to send | Right-click to view history"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <line x1="5" y1="12" x2="19" y2="12" strokeWidth="2"/>
+        <polyline points="12 5 19 12 12 19" strokeWidth="2"/>
+      </svg>
+    </button>
+  );
+
+
 
   return (
     <div className="sensor-panel">
+      <CommandTooltip
+        history={activeHistory}
+        visible={tooltip.visible}
+        x={tooltip.x}
+        y={tooltip.y}
+        onClose={closeTooltip}
+      />
+
       <div className="panel-header">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" strokeWidth="2"/>
@@ -202,7 +308,7 @@ const SensorPanel = ({ sensorData, isConnected, deviceId, BACKEND_URL }) => {
               </div>
             </div>
 
-            {/* Row 4: Completed Layers (single card centered or full width) */}
+            {/* Row 4: Completed Layers */}
             <div className="sensor-row single">
               <div className="sensor-card highlight" style={{ borderLeftColor: '#4ECDC4' }}>
                 <div className="sensor-icon layers-icon">
@@ -219,217 +325,29 @@ const SensorPanel = ({ sensorData, isConnected, deviceId, BACKEND_URL }) => {
             </div>
           </div>
 
-          {/* Parameter Inputs - Responsive */}
+          {/* Parameter Inputs */}
           <div className="control-section">
-            {/* <h4 className="section-title">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <line x1="4" y1="21" x2="4" y2="14" strokeWidth="2"/>
-                <line x1="4" y1="10" x2="4" y2="3" strokeWidth="2"/>
-              </svg>
-              Parameters
-            </h4> */}
-            
             <div className="input-grid">
-              <div className="input-group">
-                <label>Speed (%)</label>
-                <div className="input-with-button">
-                  <input 
-                    type="number" 
-                    placeholder="0-100"
-                    value={inputValues.spreaderSpeed}
-                    onChange={(e) => handleInputChange('spreaderSpeed', e.target.value)}
-                  />
-                  <button 
-                    className="send-btn"
-                    onClick={() => sendValueCommand('s', inputValues.spreaderSpeed)}
-                    disabled={sendingCommand}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <line x1="5" y1="12" x2="19" y2="12" strokeWidth="2"/>
-                      <polyline points="12 5 19 12 12 19" strokeWidth="2"/>
-                    </svg>
-                  </button>
-                </div>
-              </div>
+              <InputGroup label="Speed (%)" prefix="s" field="spreaderSpeed" inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
 
-              <div className="input-group">
-                <label>Delay (ms)</label>
-                <div className="input-with-button">
-                  <input 
-                    type="number" 
-                    placeholder="ms"
-                    value={inputValues.collectionDelay}
-                    onChange={(e) => handleInputChange('collectionDelay', e.target.value)}
-                  />
-                  <button 
-                    className="send-btn"
-                    onClick={() => sendValueCommand('w', inputValues.collectionDelay)}
-                    disabled={sendingCommand}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <line x1="5" y1="12" x2="19" y2="12" strokeWidth="2"/>
-                      <polyline points="12 5 19 12 12 19" strokeWidth="2"/>
-                    </svg>
-                  </button>
-                </div>
-              </div>
+              <InputGroup label="Delay (ms)" prefix="w" field="collectionDelay" inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
 
-              <div className="input-group">
-                <label>Layer</label>
-                <div className="input-with-button">
-                  <input 
-                    type="number" 
-                    placeholder="no"
-                    value={inputValues.buildLayer}
-                    onChange={(e) => handleInputChange('buildLayer', e.target.value)}
-                  />
-                  <button 
-                    className="send-btn"
-                    onClick={() => sendValueCommand('l', inputValues.buildLayer)}
-                    disabled={sendingCommand}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <line x1="5" y1="12" x2="19" y2="12" strokeWidth="2"/>
-                      <polyline points="12 5 19 12 12 19" strokeWidth="2"/>
-                    </svg>
-                  </button>
-                </div>
-              </div>
+              <InputGroup label="Layer" prefix="l" field="buildLayer" inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
 
-              <div className="input-group">
-                <label>Temp (°C)</label>
-                <div className="input-with-button">
-                  <input 
-                    type="number" 
-                    placeholder="°C"
-                    value={inputValues.tempSetpoint}
-                    onChange={(e) => handleInputChange('tempSetpoint', e.target.value)}
-                  />
-                  <button 
-                    className="send-btn"
-                    onClick={() => sendValueCommand('t', inputValues.tempSetpoint)}
-                    disabled={sendingCommand}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <line x1="5" y1="12" x2="19" y2="12" strokeWidth="2"/>
-                      <polyline points="12 5 19 12 12 19" strokeWidth="2"/>
-                    </svg>
-                  </button>
-                </div>
-              </div>
+              <InputGroup label="Temp (°C)" prefix="t" field="tempSetpoint" inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
 
-              <div className="input-group">
-                <label>Spreader (mm)</label>
-                <div className="input-with-button">
-                  <input 
-                    type="number" 
-                    placeholder="mm"
-                    value={inputValues.spreaderPos}
-                    onChange={(e) => handleInputChange('spreaderPos', e.target.value)}
-                  />
-                  <button 
-                    className="send-btn"
-                    onClick={() => sendValueCommand('x', inputValues.spreaderPos)}
-                    disabled={sendingCommand}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <line x1="5" y1="12" x2="19" y2="12" strokeWidth="2"/>
-                      <polyline points="12 5 19 12 12 19" strokeWidth="2"/>
-                    </svg>
-                  </button>
-                </div>
-              </div>
+              <InputGroup label="Spreader (mm)" prefix="x" field="spreaderPos" inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
 
-              <div className="input-group">
-                <label>Plate (mm)</label>
-                <div className="input-with-button">
-                  <input 
-                    type="number" 
-                    placeholder="mm"
-                    value={inputValues.buildPlate}
-                    onChange={(e) => handleInputChange('buildPlate', e.target.value)}
-                  />
-                  <button 
-                    className="send-btn"
-                    onClick={() => sendValueCommand('z', inputValues.buildPlate)}
-                    disabled={sendingCommand}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <line x1="5" y1="12" x2="19" y2="12" strokeWidth="2"/>
-                      <polyline points="12 5 19 12 12 19" strokeWidth="2"/>
-                    </svg>
-                  </button>
-                </div>
-              </div>
+              <InputGroup label="Plate (mm)" prefix="z" field="buildPlate" inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
 
-              <div className="input-group">
-                <label>Plate (µm)</label>
-                <div className="input-with-button">
-                  <input 
-                    type="number" 
-                    placeholder="µm"
-                    value={inputValues.buildPlateMicron}
-                    onChange={(e) => handleInputChange('buildPlateMicron', e.target.value)}
-                  />
-                  <button 
-                    className="send-btn"
-                    onClick={() => sendValueCommand('n', inputValues.buildPlateMicron)}
-                    disabled={sendingCommand}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <line x1="5" y1="12" x2="19" y2="12" strokeWidth="2"/>
-                      <polyline points="12 5 19 12 12 19" strokeWidth="2"/>
-                    </svg>
-                  </button>
-                </div>
-              </div>
+              <InputGroup label="Plate (µm)" prefix="n" field="buildPlateMicron" inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
 
-              <div className="input-group">
-                <label>Optics (mm)</label>
-                <div className="input-with-button">
-                  <input 
-                    type="number" 
-                    placeholder="mm"
-                    value={inputValues.opticsMotor}
-                    onChange={(e) => handleInputChange('opticsMotor', e.target.value)}
-                  />
-                  <button 
-                    className="send-btn"
-                    onClick={() => sendValueCommand('k', inputValues.opticsMotor)}
-                    disabled={sendingCommand}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <line x1="5" y1="12" x2="19" y2="12" strokeWidth="2"/>
-                      <polyline points="12 5 19 12 12 19" strokeWidth="2"/>
-                    </svg>
-                  </button>
-                </div>
-              </div>
+              <InputGroup label="Optics (mm)" prefix="k" field="opticsMotor" inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
 
-              <div className="input-group">
-                <label>Resume Layer</label>
-                <div className="input-with-button">
-                  <input 
-                    type="number" 
-                    placeholder="no"
-                    value={inputValues.resumeLayer}
-                    onChange={(e) => handleInputChange('resumeLayer', e.target.value)}
-                  />
-                  <button 
-                    className="send-btn"
-                    onClick={() => sendValueCommand('q', inputValues.resumeLayer)}
-                    disabled={sendingCommand}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <line x1="5" y1="12" x2="19" y2="12" strokeWidth="2"/>
-                      <polyline points="12 5 19 12 12 19" strokeWidth="2"/>
-                    </svg>
-                  </button>
-                </div>
-              </div>
+              <InputGroup label="Resume Layer" prefix="q" field="resumeLayer" inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
 
               <div className="input-group full-width">
-                <button 
+                <button
                   className="control-btn special full"
                   onClick={() => sendCommand('o')}
                   disabled={sendingCommand}

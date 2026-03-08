@@ -1,104 +1,177 @@
-
-
-
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import "./App.css";
 import SensorPanel from "./components/SensorPanel";
 import ControlPanel from "./components/ControlPanel";
 import GCodeViewer from "./components/GcodeViewer";
 import ConnectionPanel from "./components/ConnectionPanel";
 
-function App() {
-  const [gcode, setGcode] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [fileName, setFileName] = useState("");
-  
-  // Device connection states
-  const [deviceId, setDeviceId] = useState('');
-  const [isConnected, setIsConnected] = useState(false);
+// ─────────────────────────────────────────────
+// WebSocket hook — replaces all polling logic
+// ─────────────────────────────────────────────
+function useDeviceStream(deviceId, isConnected) {
   const [sensorData, setSensorData] = useState(null);
-  const [autoRefresh, setAutoRefresh] = useState(false);
+  const wsRef    = useRef(null);
+  const retryRef = useRef(null);
 
-  const BACKEND_URL = "https://aws-connectivity.vercel.app";
+  const connect = useCallback(() => {
+    // Only open socket when user has connected a device
+    if (!deviceId || !isConnected) return;
 
+    // ws:// for local, wss:// for deployed backend
+    // const WS_URL = "wss://aws-connectivity.vercel.app"; // ← change if needed
+      const WS_URL = "wss://aws-connectivity.onrender.com"; // ← change if needed
+    const ws = new WebSocket(`${WS_URL}/ws/device/${deviceId}`);
+    wsRef.current = ws;
+
+    ws.onopen = () => console.log(`[WS] Connected → device: ${deviceId}`);
+
+    ws.onmessage = (e) => {
+      try {
+        const { event, data } = JSON.parse(e.data);
+        if (event === "ping") { ws.send("ping"); return; }
+        // INITIAL, INSERT, MODIFY — all update sensor panel
+        setSensorData(data);
+      } catch {
+        console.warn("[WS] Bad message:", e.data);
+      }
+    };
+
+    ws.onerror = () => console.error("[WS] Error");
+
+    ws.onclose = () => {
+      if (isConnected) {
+        // Auto-reconnect only if user hasn't disconnected
+        retryRef.current = setTimeout(connect, 3000);
+        console.log("[WS] Dropped — retrying in 3s...");
+      }
+    };
+  }, [deviceId, isConnected]);
+
+  useEffect(() => {
+    connect();
+    return () => {
+      clearTimeout(retryRef.current);
+      wsRef.current?.close();
+    };
+  }, [connect]);
+
+  // Let parent reset sensor data on disconnect
+  const clearData = () => setSensorData(null);
+
+  return { sensorData, setSensorData, clearData };
+}
+
+
+// ─────────────────────────────────────────────
+// App
+// ─────────────────────────────────────────────
+function App() {
+  const [gcode, setGcode]           = useState("");
+  const [isLoading, setIsLoading]   = useState(false);
+  const [fileName, setFileName]     = useState("");
+
+  const [deviceId, setDeviceId]       = useState('');
+  const [isConnected, setIsConnected] = useState(false);
+
+  // const BACKEND_URL = "https://aws-connectivity.vercel.app";
+
+  const BACKEND_URL = "https://aws-connectivity.onrender.com";
+
+  // ← autoRefresh and polling are GONE, replaced by WebSocket
+  const { sensorData, setSensorData, clearData } = useDeviceStream(deviceId, isConnected);
+
+  // Refs for async callbacks (filename send etc.)
+  const deviceIdRef    = useRef(deviceId);
+  const isConnectedRef = useRef(isConnected);
+  useEffect(() => { deviceIdRef.current    = deviceId;    }, [deviceId]);
+  useEffect(() => { isConnectedRef.current = isConnected; }, [isConnected]);
+
+  // ── Filename send (unchanged) ──────────────────────────────────────────────
+  const sendFileNameToBackend = async (name) => {
+    const currentDeviceId    = deviceIdRef.current;
+    const currentIsConnected = isConnectedRef.current;
+    if (!currentIsConnected || !currentDeviceId) {
+      console.warn("Filename not sent — device not connected yet.");
+      return;
+    }
+    try {
+      const res = await fetch(
+        `${BACKEND_URL}/device/${currentDeviceId}/filename?filename=${encodeURIComponent(name)}`,
+        { method: "POST" }
+      );
+      if (res.ok) { console.log("✅ Filename sent:", name); return; }
+    } catch (err) {
+      console.warn("/filename failed, falling back to /command:", err);
+    }
+    try {
+      await fetch(
+        `${BACKEND_URL}/device/${currentDeviceId}/command?command=file:${encodeURIComponent(name)}`,
+        { method: "POST" }
+      );
+      console.log("✅ Filename sent via /command:", name);
+    } catch (err) {
+      console.error("Error sending filename:", err);
+    }
+  };
+
+  // ── File upload (unchanged) ────────────────────────────────────────────────
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    // Check if file is .gcode or .txt
-    const fileExtension = file.name.split('.').pop().toLowerCase();
-    if (fileExtension !== 'gcode' && fileExtension !== 'txt' && fileExtension !== 'nc' && fileExtension !== 'ngc') {
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['gcode','txt','nc','ngc'].includes(ext)) {
       alert('Please upload a valid G-Code file (.gcode, .nc, .ngc, or .txt)');
       return;
     }
-
     setIsLoading(true);
     setFileName(file.name);
     const reader = new FileReader();
-    
     reader.onload = (event) => {
       const content = event.target.result;
-      
-      // Validate if content looks like G-Code
-      const gcodePattern = /^[GM]\d+/m; // Looks for G or M commands
-      if (!gcodePattern.test(content)) {
-        const confirmLoad = window.confirm(
-          'This file may not contain valid G-Code. Do you want to try loading it anyway?'
-        );
-        if (!confirmLoad) {
-          setIsLoading(false);
-          setFileName("");
-          return;
+      if (!/^[GM]\d+/m.test(content)) {
+        if (!window.confirm('This file may not contain valid G-Code. Load anyway?')) {
+          setIsLoading(false); setFileName(""); return;
         }
       }
-      
       setGcode(content);
       setIsLoading(false);
-      console.log("G-code file loaded successfully");
-      console.log("File type:", fileExtension);
-      console.log("File size:", content.length, "characters");
+      sendFileNameToBackend(file.name);
     };
-    
-    reader.onerror = (error) => {
-      console.error("Error reading file:", error);
-      alert("Error reading file. Please try again.");
-      setIsLoading(false);
-      setFileName("");
+    reader.onerror = () => {
+      alert("Error reading file."); setIsLoading(false); setFileName("");
     };
-    
     reader.readAsText(file);
+  };
+
+  const clearGcodeState = () => {
+    setGcode(""); setFileName(""); setIsLoading(false);
+    const fi = document.getElementById('file-upload');
+    if (fi) fi.value = "";
   };
 
   const resetAllStates = () => {
     setDeviceId("");
     setIsConnected(false);
-    setSensorData(null);
-    setAutoRefresh(false);
-    setGcode("");
-    setFileName("");
-    setIsLoading(false);
+    clearData();          // ← clears sensorData from hook
+    clearGcodeState();
   };
 
   return (
     <div className="App">
-      {/* Connection Panel - Top */}
-      <ConnectionPanel 
+      <ConnectionPanel
         deviceId={deviceId}
         setDeviceId={setDeviceId}
         isConnected={isConnected}
         setIsConnected={setIsConnected}
         setSensorData={setSensorData}
-        autoRefresh={autoRefresh}
-        setAutoRefresh={setAutoRefresh}
+        // autoRefresh and setAutoRefresh props removed — no longer needed
         BACKEND_URL={BACKEND_URL}
         resetAllStates={resetAllStates}
       />
 
-      {/* Main Dashboard Layout - Horizontal 25-50-25 */}
       <div className="dashboard-container">
-        {/* Left Panel - Sensor Panel (25%) */}
         <div className="panel-25">
-          <SensorPanel 
+          <SensorPanel
             sensorData={sensorData}
             isConnected={isConnected}
             deviceId={deviceId}
@@ -106,14 +179,10 @@ function App() {
           />
         </div>
 
-        {/* Center Panel - G-Code Viewer + Command Status (50%) */}
         <div className="panel-50">
-          {/* G-Code Viewer Section */}
           <div className="gcode-section">
             <div className="gcode-header">
               <h2>G-Code 3D Visualizer</h2>
-              
-              {/* File upload */}
               <div className="file-upload-container">
                 <label htmlFor="file-upload" className="file-upload-label">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -128,32 +197,21 @@ function App() {
                   onChange={handleFileUpload}
                   className="file-input"
                 />
-                {fileName && <span className="file-name">{fileName}</span>}
+                {fileName  && <span className="file-name">{fileName}</span>}
                 {isLoading && <span className="loading-text">Loading...</span>}
               </div>
             </div>
 
-            {/* Instructions */}
             {gcode && (
               <div className="viewer-instructions">
                 <div className="instructions-row">
-                  <div className="instruction-item">
-                    <span className="icon">🖱️</span>
-                    <span><strong>Left Drag:</strong> Rotate</span>
-                  </div>
-                  <div className="instruction-item">
-                    <span className="icon">🖱️</span>
-                    <span><strong>Right Drag:</strong> Pan</span>
-                  </div>
-                  <div className="instruction-item">
-                    <span className="icon">🔍</span>
-                    <span><strong>Scroll:</strong> Zoom</span>
-                  </div>
+                  <div className="instruction-item"><span className="icon">🖱️</span><span><strong>Left Drag:</strong> Rotate</span></div>
+                  <div className="instruction-item"><span className="icon">🖱️</span><span><strong>Right Drag:</strong> Pan</span></div>
+                  <div className="instruction-item"><span className="icon">🔍</span><span><strong>Scroll:</strong> Zoom</span></div>
                 </div>
               </div>
             )}
 
-            {/* G-code viewer */}
             <div className="viewer-container compact">
               {!gcode ? (
                 <div className="empty-viewer">
@@ -167,21 +225,16 @@ function App() {
               ) : (
                 <GCodeViewer
                   gcode={gcode}
-                  extrusionColor={[
-                    "#FF6B6B", "#4ECDC4", "#45B7D1", "#FFA07A",
-                    "#98D8C8", "#FFD93D", "#C084FC", "#F472B6"
-                  ]}
                   buildVolume={{ x: 200, y: 200, z: 200 }}
                   backgroundColor="#0a0a0a"
                   onProgress={(p) => console.log("Load progress:", Math.round(p * 100) + "%")}
-                  onFinishLoading={(info) => console.log("Loaded G-code info:", info)}
+                  onFinishLoading={(info) => console.log("Loaded:", info)}
                   onError={(err) => console.error("Viewer error:", err)}
                 />
               )}
             </div>
           </div>
 
-          {/* Command Status Box - Below G-Code Viewer */}
           <div className="command-status-box">
             <div className="command-status-content">
               <div className="command-icon">
@@ -206,12 +259,12 @@ function App() {
           </div>
         </div>
 
-        {/* Right Panel - Control Panel (25%) */}
         <div className="panel-25">
-          <ControlPanel 
+          <ControlPanel
             deviceId={deviceId}
             isConnected={isConnected}
             BACKEND_URL={BACKEND_URL}
+            onAbort={resetAllStates}
           />
         </div>
       </div>
