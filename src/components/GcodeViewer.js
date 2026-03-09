@@ -1,5 +1,3 @@
-
-
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import * as GCodePreview from "gcode-preview";
 import { Play, Pause, RotateCcw, ChevronRight, Layers } from "lucide-react";
@@ -775,7 +773,7 @@ const GCodeViewer = ({
           />
         </div>
 
-        {/* {isLoading && (
+        {isLoading && (
           <div style={{
             position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.65)',
             display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -790,7 +788,7 @@ const GCodeViewer = ({
             </div>
             <div style={{ fontSize: '12px', opacity: 0.6 }}>{loadProgress}%</div>
           </div>
-        )} */}
+        )}
 
         {!showSidebar && totalLayers > 0 && (
           <button onClick={() => setShowSidebar(true)} style={{
