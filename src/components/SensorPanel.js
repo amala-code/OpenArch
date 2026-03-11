@@ -1,3 +1,4 @@
+
 import React from "react";
 import { useState, useCallback } from "react";
 import "./SensorPanel.css";
@@ -83,40 +84,90 @@ const InputGroup = ({ label, prefix, field, inputValues, lastSentValues, handleI
   );
 };
 
+// ── Helper: compute gradient style for a sensor card ──────────────────────────
+// setpoint: the value user sent (number or undefined)
+// current:  live reading (number)
+// type:     'temp' | 'oxygen'
+const ROOM_TEMP = 25;       // °C assumed room temperature
+const ROOM_OXYGEN = 20.9;   // % assumed ambient oxygen
+
+// Neon colour palette
+const NEON = {
+  green:  { rgb: '0, 255, 163',   hex: '#00FFA3' },
+  yellow: { rgb: '255, 234, 0',   hex: '#FFEA00' },
+  orange: { rgb: '255, 115, 0',   hex: '#FF7300' },
+  red:    { rgb: '255, 20, 80',   hex: '#FF1450' },
+};
+
+const getRatio = (current, setpoint, type) => {
+  if (setpoint === undefined || setpoint === null) return null;
+  if (type === 'temp') {
+    const range = Math.max(setpoint - ROOM_TEMP, 1);
+    return Math.max(0, Math.min((current - ROOM_TEMP) / range, 1.3));
+  } else {
+    const range = Math.max(ROOM_OXYGEN - setpoint, 1);
+    return Math.max(0, Math.min((ROOM_OXYGEN - current) / range, 1.3));
+  }
+};
+
+const pickNeon = (ratio) => {
+  if (ratio === null)    return NEON.green;
+  if (ratio <= 0.33)     return NEON.green;
+  if (ratio <= 0.66)     return NEON.yellow;
+  if (ratio <= 1.0)      return NEON.orange;
+  return NEON.red;
+};
+
+const getSensorGradient = (current, setpoint, type) => {
+  const ratio = getRatio(current, setpoint, type);
+  const neon  = pickNeon(ratio);
+
+  if (ratio === null) {
+    return `linear-gradient(135deg, rgba(${neon.rgb},0.13) 0%, rgba(${neon.rgb},0.03) 100%)`;
+  }
+
+  // intensity scales with ratio so it glows brighter as it climbs
+  const intensity = 0.18 + Math.min(ratio, 1.3) * 0.22;
+  return `linear-gradient(135deg, rgba(${neon.rgb},${intensity.toFixed(2)}) 0%, rgba(${neon.rgb},0.04) 100%)`;
+};
+
+// Border left colour + neon box-shadow
+const getSensorBorderColor = (current, setpoint, type) => {
+  const ratio = getRatio(current, setpoint, type);
+  return pickNeon(ratio).hex;
+};
+
+// Glow shadow to apply on the card element
+const getSensorGlow = (current, setpoint, type) => {
+  const ratio = getRatio(current, setpoint, type);
+  const neon  = pickNeon(ratio);
+  if (ratio === null) return `0 0 8px rgba(${neon.rgb},0.2)`;
+  const spread = 6 + Math.min(ratio, 1.3) * 14;
+  return `0 0 ${spread.toFixed(0)}px rgba(${neon.rgb},0.55), inset 0 0 ${(spread * 0.4).toFixed(0)}px rgba(${neon.rgb},0.08)`;
+};
+
 const SensorPanel = ({ sensorData, isConnected, deviceId, BACKEND_URL }) => {
   const [sendingCommand, setSendingCommand] = useState(false);
   const [inputValues, setInputValues] = useState({
     spreaderSpeed: "", collectionDelay: "", buildLayer: "",
     tempSetpoint: "", spreaderPos: "", buildPlate: "",
-    buildPlateMicron: "", opticsMotor: "", resumeLayer: ""
+    buildPlateMicron: "", opticsMotor: "", resumeLayer: "",
+    oxygenSetpoint: ""
   });
 
-  // ✅ FIX 5: Command history per field
   const [commandHistory, setCommandHistory] = useState({});
-  // Last successfully sent value per field
   const [lastSentValues, setLastSentValues] = useState({});
   const [tooltip, setTooltip] = useState({ visible: false, x: 0, y: 0, fieldKey: null });
 
-  const getStatusColor = (value, type) => {
-    if (type === 'temp') {
-      if (value < 160) return '#4ECDC4';
-      if (value < 180) return '#FFD93D';
-      return '#FF6B6B';
-    }
-    if (type === 'oxygen') {
-      if (value > 20) return '#4ECDC4';
-      if (value > 18) return '#FFD93D';
-      return '#FF6B6B';
-    }
-    return '#4ECDC4';
-  };
+  // ── Sent setpoints for gradient logic ──────────────────────────────────────
+  const [sentTempSetpoint, setSentTempSetpoint]     = useState(undefined);
+  const [sentOxygenSetpoint, setSentOxygenSetpoint] = useState(undefined);
 
   const sendCommand = async (command) => {
     if (!isConnected || !deviceId) {
       alert("Please connect to a device first!");
       return;
     }
-
     setSendingCommand(true);
     try {
       await fetch(`${BACKEND_URL}/device/${deviceId}/command?command=${command}`, { method: "POST" });
@@ -132,7 +183,6 @@ const SensorPanel = ({ sensorData, isConnected, deviceId, BACKEND_URL }) => {
     }
   };
 
-  // ✅ FIX 5: Track per-field history
   const sendValueCommand = async (prefix, value, fieldKey) => {
     if (!value) { alert("Please enter a value!"); return; }
     const command = `${prefix}${value}`;
@@ -147,6 +197,11 @@ const SensorPanel = ({ sensorData, isConnected, deviceId, BACKEND_URL }) => {
 
     await sendCommand(command);
     setLastSentValues(prev => ({ ...prev, [fieldKey]: value }));
+
+    // ── capture setpoints for gradient ──────────────────────────────────────
+    const num = parseFloat(value);
+    if (fieldKey === 'tempSetpoint' && !isNaN(num))    setSentTempSetpoint(num);
+    if (fieldKey === 'oxygenSetpoint' && !isNaN(num))  setSentOxygenSetpoint(num);
   };
 
   const handleInputChange = (field, value) => {
@@ -165,22 +220,17 @@ const SensorPanel = ({ sensorData, isConnected, deviceId, BACKEND_URL }) => {
 
   const activeHistory = tooltip.fieldKey ? (commandHistory[tooltip.fieldKey] || []) : [];
 
-  const SendBtn = ({ prefix, field }) => (
-    <button
-      className="send-btn"
-      onClick={() => sendValueCommand(prefix, inputValues[field], field)}
-      onContextMenu={(e) => handleRightClick(e, field)}
-      disabled={sendingCommand}
-      title="Click to send | Right-click to view history"
-    >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-        <line x1="5" y1="12" x2="19" y2="12" strokeWidth="2"/>
-        <polyline points="12 5 19 12 12 19" strokeWidth="2"/>
-      </svg>
-    </button>
-  );
+  // live readings (numbers)
+  const avgTemp    = parseFloat(sensorData?.average_temp) || 0;
+  const oxygenVal  = parseFloat(sensorData?.oxygen_value) || 0;
 
-
+  // per-temp-card gradient (uses each individual reading vs tempSetpoint)
+  const tempCards = [
+    { label: 'Temperature 1', value: sensorData?.Temp1 || '0.0' },
+    { label: 'Temperature 2', value: sensorData?.Temp2 || '0.0' },
+    { label: 'Temperature 3', value: sensorData?.Temp3 || '0.0' },
+    { label: 'Temperature 4', value: sensorData?.Temp4 || '0.0' },
+  ];
 
   return (
     <div className="sensor-panel">
@@ -223,65 +273,54 @@ const SensorPanel = ({ sensorData, isConnected, deviceId, BACKEND_URL }) => {
         </div>
       ) : (
         <>
-          {/* Sensor Readings Section */}
+          {/* ── Sensor Readings Section ─────────────────────────────────────── */}
           <div className="sensors-container">
-            {/* Row 1: Temperature 1 & 2 */}
+
+            {/* Row 1 & 2: Temperature 1–4 with dynamic gradients */}
+            {[tempCards.slice(0, 2), tempCards.slice(2, 4)].map((row, rowIdx) => (
+              <div className="sensor-row" key={rowIdx}>
+                {row.map(({ label, value }) => {
+                  const num = parseFloat(value) || 0;
+                  const bg  = getSensorGradient(num, sentTempSetpoint, 'temp');
+                  const bc  = getSensorBorderColor(num, sentTempSetpoint, 'temp');
+                  // glow applied inline below via getSensorGlow
+                  return (
+                    <div
+                      key={label}
+                      className="sensor-card"
+                      style={{
+                        borderLeftColor: bc,
+                        background: bg,
+                        boxShadow: getSensorGlow(num, sentTempSetpoint, 'temp'),
+                        transition: 'background 1.2s ease, border-left-color 1.2s ease, box-shadow 1.2s ease',
+                      }}
+                    >
+                      <div className="sensor-icon temp-icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                          <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" strokeWidth="2"/>
+                        </svg>
+                      </div>
+                      <div className="sensor-info">
+                        <span className="sensor-label">{label}</span>
+                        <span className="sensor-value">{value}°C</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+
+            {/* Row 3: Average Temp & Oxygen — both with dynamic gradients */}
             <div className="sensor-row">
-              <div className="sensor-card" style={{ borderLeftColor: getStatusColor(sensorData.Temperature1 || 0, 'temp') }}>
-                <div className="sensor-icon temp-icon">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" strokeWidth="2"/>
-                  </svg>
-                </div>
-                <div className="sensor-info">
-                  <span className="sensor-label">Temperature 1</span>
-                  <span className="sensor-value">{sensorData.Temp1 || '0.0'}°C</span>
-                </div>
-              </div>
-
-              <div className="sensor-card" style={{ borderLeftColor: getStatusColor(sensorData.Temperature2 || 0, 'temp') }}>
-                <div className="sensor-icon temp-icon">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" strokeWidth="2"/>
-                  </svg>
-                </div>
-                <div className="sensor-info">
-                  <span className="sensor-label">Temperature 2</span>
-                  <span className="sensor-value">{sensorData.Temp2 || '0.0'}°C</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Row 2: Temperature 3 & 4 */}
-            <div className="sensor-row">
-              <div className="sensor-card" style={{ borderLeftColor: getStatusColor(sensorData.Temp3 || 0, 'temp') }}>
-                <div className="sensor-icon temp-icon">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" strokeWidth="2"/>
-                  </svg>
-                </div>
-                <div className="sensor-info">
-                  <span className="sensor-label">Temperature 3</span>
-                  <span className="sensor-value">{sensorData.Temp3 || '0.0'}°C</span>
-                </div>
-              </div>
-
-              <div className="sensor-card" style={{ borderLeftColor: getStatusColor(sensorData.Temp4 || 0, 'temp') }}>
-                <div className="sensor-icon temp-icon">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" strokeWidth="2"/>
-                  </svg>
-                </div>
-                <div className="sensor-info">
-                  <span className="sensor-label">Temperature 4</span>
-                  <span className="sensor-value">{sensorData.Temp4 || '0.0'}°C</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Row 3: Average Temp & Oxygen */}
-            <div className="sensor-row">
-              <div className="sensor-card highlight" style={{ borderLeftColor: '#FF8C42' }}>
+              <div
+                className="sensor-card highlight"
+                style={{
+                  borderLeftColor: getSensorBorderColor(avgTemp, sentTempSetpoint, 'temp'),
+                  background: getSensorGradient(avgTemp, sentTempSetpoint, 'temp'),
+                  boxShadow: getSensorGlow(avgTemp, sentTempSetpoint, 'temp'),
+                  transition: 'background 1.2s ease, border-left-color 1.2s ease, box-shadow 1.2s ease',
+                }}
+              >
                 <div className="sensor-icon avg-icon">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                     <circle cx="12" cy="12" r="10" strokeWidth="2"/>
@@ -294,7 +333,15 @@ const SensorPanel = ({ sensorData, isConnected, deviceId, BACKEND_URL }) => {
                 </div>
               </div>
 
-              <div className="sensor-card" style={{ borderLeftColor: getStatusColor(sensorData.oxygen_value || 0, 'oxygen') }}>
+              <div
+                className="sensor-card"
+                style={{
+                  borderLeftColor: getSensorBorderColor(oxygenVal, sentOxygenSetpoint, 'oxygen'),
+                  background: getSensorGradient(oxygenVal, sentOxygenSetpoint, 'oxygen'),
+                  boxShadow: getSensorGlow(oxygenVal, sentOxygenSetpoint, 'oxygen'),
+                  transition: 'background 1.2s ease, border-left-color 1.2s ease, box-shadow 1.2s ease',
+                }}
+              >
                 <div className="sensor-icon oxygen-icon">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                     <circle cx="12" cy="12" r="10" strokeWidth="2"/>
@@ -325,40 +372,56 @@ const SensorPanel = ({ sensorData, isConnected, deviceId, BACKEND_URL }) => {
             </div>
           </div>
 
-          {/* Parameter Inputs */}
+          {/* ── Parameter Inputs — scrollable container ─────────────────────── */}
           <div className="control-section">
-            <div className="input-grid">
-              <InputGroup label="Speed (%)" prefix="s" field="spreaderSpeed" inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
+            {/* scroll track hint */}
+            <div
+              className="input-scroll-wrapper"
+              style={{
+                maxHeight: '320px',
+                overflowY: 'auto',
+                overflowX: 'hidden',
+                paddingRight: '4px',
+                /* custom thin scrollbar */
+                scrollbarWidth: 'thin',
+                scrollbarColor: 'rgba(139,180,204,0.35) rgba(255,255,255,0.04)',
+              }}
+            >
+              <div className="input-grid">
+                <InputGroup label="Speed (%)"     prefix="s" field="spreaderSpeed"   inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
+                <InputGroup label="Delay (ms)"    prefix="w" field="collectionDelay" inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
+                <InputGroup label="Layer"         prefix="l" field="buildLayer"      inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
+                <InputGroup label="Temp (°C)"     prefix="t" field="tempSetpoint"    inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
+                <InputGroup label="Oxygen (%)"    prefix="O" field="oxygenSetpoint"  inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
+                <InputGroup label="Spreader (mm)" prefix="x" field="spreaderPos"     inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
+                <InputGroup label="Plate (mm)"    prefix="z" field="buildPlate"      inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
+                <InputGroup label="Plate (µm)"    prefix="n" field="buildPlateMicron"inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
+                <InputGroup label="Optics (mm)"   prefix="k" field="opticsMotor"     inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
+                <InputGroup label="Resume Layer"  prefix="q" field="resumeLayer"     inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
 
-              <InputGroup label="Delay (ms)" prefix="w" field="collectionDelay" inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
-
-              <InputGroup label="Layer" prefix="l" field="buildLayer" inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
-
-              <InputGroup label="Temp (°C)" prefix="t" field="tempSetpoint" inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
-
-              <InputGroup label="Spreader (mm)" prefix="x" field="spreaderPos" inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
-
-              <InputGroup label="Plate (mm)" prefix="z" field="buildPlate" inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
-
-              <InputGroup label="Plate (µm)" prefix="n" field="buildPlateMicron" inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
-
-              <InputGroup label="Optics (mm)" prefix="k" field="opticsMotor" inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
-
-              <InputGroup label="Resume Layer" prefix="q" field="resumeLayer" inputValues={inputValues} lastSentValues={lastSentValues} handleInputChange={handleInputChange} sendValueCommand={sendValueCommand} handleRightClick={handleRightClick} sendingCommand={sendingCommand} />
-
-              <div className="input-group full-width">
-                <button
-                  className="control-btn special full"
-                  onClick={() => sendCommand('o')}
-                  disabled={sendingCommand}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M3 3h18v18H3z" strokeWidth="2"/>
-                  </svg>
-                  Loadcell Tare
-                </button>
+                <div className="input-group full-width">
+                  <button
+                    className="control-btn special full"
+                    onClick={() => sendCommand('o')}
+                    disabled={sendingCommand}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path d="M3 3h18v18H3z" strokeWidth="2"/>
+                    </svg>
+                    Loadcell Tare
+                  </button>
+                </div>
               </div>
             </div>
+
+            {/* subtle scroll indicator bar at bottom */}
+            <div style={{
+              height: '3px',
+              background: 'linear-gradient(90deg, rgba(139,180,204,0.0) 0%, rgba(139,180,204,0.25) 50%, rgba(139,180,204,0.0) 100%)',
+              borderRadius: '2px',
+              marginTop: '6px',
+              opacity: 0.7,
+            }} />
           </div>
         </>
       )}
